@@ -38,13 +38,9 @@ typedef struct
 
 typedef struct 
 {
-    int sensorOne;
+    float sensorOne;
     int sensorTwo;
 } adcSensorData_t;
-
-
-// #define EXAMPLE_ADC1_CHAN0          ADC_CHANNEL_4       // 
-// #define EXAMPLE_ADC1_CHAN1          ADC_CHANNEL_5
 
 
 esp_err_t adcSensorInitStack(adcSensorConfig_t *config, esp_event_handler_t adcSensorEventCallback);

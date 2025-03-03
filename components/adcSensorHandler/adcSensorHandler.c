@@ -1,4 +1,5 @@
 #include "adcSensorHandler.h"
+#include <math.h>
 
 
 #include "freertos/FreeRTOS.h"
@@ -23,12 +24,15 @@ TaskHandle_t adcTaskHandler;
 
 #define EXAMPLE_ADC_ATTEN           ADC_ATTEN_DB_12
 
-// static int adc_raw[2][10];
-// static int voltage[2][10];
 
 static adcSensorData_t rawSensorData;
 static adcSensorPinConfig_t localPinConfig;
 adc_oneshot_unit_handle_t adc1_handle;
+
+#define GAMMA 0.7
+#define RL10 33
+
+
 
 
 void adcSensorTask(void *pvParameters);
@@ -111,15 +115,21 @@ void adcSensorTask(void *pvParameters)
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, localPinConfig.moisturePin, &config));
 
     static int lightPrevVal, moisturePrevVal;
+    static int lightData, moistureData;
+    float voltage, resistance, lux;
     while(1)
     {
         // Read the Light Sensor Value 
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, localPinConfig.lightPin, &rawSensorData.sensorOne));
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, localPinConfig.lightPin, &lightData));
         
-        if(checkDifference(rawSensorData.sensorOne, lightPrevVal, 5))
+        if(checkDifference(lightData, lightPrevVal, 10))
         {
-            lightPrevVal = rawSensorData.sensorOne;
-            ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, localPinConfig.lightPin, rawSensorData.sensorOne);
+            lightPrevVal = lightData;
+            voltage = lightData / 4096.00 * 3.3;
+            resistance = 2000 * voltage / (1 - voltage / 3.3);
+            lux = pow(RL10 * 1e3 * pow(10, GAMMA) / resistance, (1 / GAMMA));
+            rawSensorData.sensorOne = lux;
+            ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d || Lux: %.2f", ADC_UNIT_1 + 1, localPinConfig.lightPin, lightData, lux);
             //TODO: add event post function over here.... 
             ESP_ERROR_CHECK(esp_event_post(ESP_ADC_SENSOR_EVENT, ADC_LIGHT_SENSOR_EVENT, &rawSensorData, sizeof(adcSensorData_t), 100));
 
@@ -128,12 +138,13 @@ void adcSensorTask(void *pvParameters)
         vTaskDelay(1000 / portTICK_PERIOD_MS);
 
         // Read the Moisture sensor value 
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, localPinConfig.moisturePin, &rawSensorData.sensorTwo));
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, localPinConfig.moisturePin, &moistureData));
         
-        if(checkDifference(rawSensorData.sensorTwo, moisturePrevVal, 5))
+        if(checkDifference(moistureData, moisturePrevVal, 5))
         {
-            moisturePrevVal = rawSensorData.sensorTwo;
-            ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, localPinConfig.moisturePin, rawSensorData.sensorTwo);
+            moisturePrevVal = moistureData;
+            rawSensorData.sensorTwo = (100 - ((moistureData/4095.00) * 100));
+            ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d || Moisture: %d", ADC_UNIT_1 + 1, localPinConfig.moisturePin, moistureData, rawSensorData.sensorTwo);
             //TODO: add event post function over here.... 
             ESP_ERROR_CHECK(esp_event_post(ESP_ADC_SENSOR_EVENT, ADC_MOISTURE_SENSOR_EVENT, &rawSensorData, sizeof(adcSensorData_t), 100));
         }
